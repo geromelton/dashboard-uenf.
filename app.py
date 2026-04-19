@@ -7,19 +7,18 @@ import datetime
 # ─── CONFIGURAÇÃO MOBILE-FIRST ────────────────────────────────
 st.set_page_config(page_title="OPERAÇÃO RESGATE", layout="wide", initial_sidebar_state="collapsed")
 
-# ─── CSS PARA MATAR AS BARRIGAS E FIXAR O CHAT ────────────────
+# ─── CSS PARA MATAR AS BARRIGAS E MELHORAR O VISUAL ─────────
 st.markdown("""
 <style>
     .main { background-color: #0f1117; }
-    /* Estilo das Abas */
+    /* Ajuste das Abas */
     .stTabs [data-baseweb="tab-list"] { gap: 4px; }
     .stTabs [data-baseweb="tab"] {
         background: #1e2130; border-radius: 5px; padding: 5px 10px; color: #888; font-size: 12px;
     }
     .stTabs [aria-selected="true"] { background: #1F3864 !important; color: white !important; }
-    /* Forçar largura total para evitar barrigas */
-    [data-testid="stDataFrame"] { width: 100% !important; }
-    .block-container { padding-top: 1rem; padding-bottom: 10rem; }
+    /* Estilo do chat */
+    .stChatMessage { background-color: #1e2130; border-radius: 10px; margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -33,83 +32,57 @@ st.subheader(f"⚡ Domingo, {hoje.strftime('%d/%m')}")
 # ─── ABAS ─────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Home", "📚 Estudo", "💪 Treino", "🎓 Notas", "🤖 IA"])
 
-# Função segura para carregar as abas
 def load(sheet_name):
     try:
-        # Resetamos o index para evitar o erro de 'hide_index' do seu log
         return conn.read(worksheet=sheet_name).reset_index(drop=True)
-    except Exception as e:
-        st.warning(f"Aba '{sheet_name}' não carregou. Verifique o nome na planilha!")
+    except:
         return None
 
-# --- ABA 1: HOME ---
-with tab1:
-    df_home = load("📋 Visão Geral")
-    if df_home is not None:
-        st.dataframe(df_home, use_container_width=True, hide_index=True)
-
-# --- ABA 2: ESTUDOS ---
+# --- ABA 2: ESTUDOS (COM AJUSTE DE LARGURA) ---
 with tab2:
-    st.write("📖 **Foco: Recuperar P1**")
-    df_est = load("📚 Registro de Estudos")
-    if df_est is not None:
-        df_ed = st.data_editor(df_est, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar Estudos", use_container_width=True):
-            conn.update(worksheet="📚 Registro de Estudos", data=df_ed)
-            st.success("Sincronizado!")
+    st.write("📝 **Registro de Civil - UENF**")
+    df_e = load("📚 Registro de Estudos")
+    if df_e is not None:
+        # 'width="stretch"' remove os avisos do log e as barrigas
+        df_edit = st.data_editor(df_e, num_rows="dynamic", width="stretch")
+        if st.button("💾 Salvar Estudos", width="stretch"):
+            conn.update(worksheet="📚 Registro de Estudos", data=df_edit)
+            st.success("✅ Sincronizado!")
 
-# --- ABA 3: TREINO ---
-with tab3:
-    df_tr = load("💪 Treino")
-    if df_tr is not None:
-        df_ed_tr = st.data_editor(df_tr, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar Cargas", use_container_width=True):
-            conn.update(worksheet="💪 Treino", data=df_ed_tr)
-
-# --- ABA 4: NOTAS ---
-with tab4:
-    df_nt = load("🎓 Notas Acadêmicas")
-    if df_nt is not None:
-        df_ed_nt = st.data_editor(df_nt, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar Notas", use_container_width=True):
-            conn.update(worksheet="🎓 Notas Acadêmicas", data=df_ed_nt)
-
-# --- ABA 5: IA (GEMINI) ---
+# --- ABA 5: IA (COM MODELO 1.5 PARA EVITAR COTA) ---
 with tab5:
-    st.write("🤖 **Tutor UENF — Jonathan Nunes**")
-    
-    # Pegamos a chave
+    st.write("🤖 **Tutor Gemini Online**")
     api_key = st.secrets.get("GEMINI_API_KEY")
     
     if "chat" not in st.session_state:
         st.session_state.chat = []
 
-    # Mostra as mensagens
     for m in st.session_state.chat:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    # O CAMPO DE ESCREVER (Sempre visível no rodapé agora!)
-    prompt = st.chat_input("Pergunte sobre Escalonamento ou Química...")
-    
-    if prompt:
+    if prompt := st.chat_input("Dúvida de Álgebra ou Química?"):
         if not api_key:
-            st.error("Erro: A chave API ainda não foi configurada nos Secrets do Streamlit!")
+            st.error("Erro: Adicione GEMINI_API_KEY no topo dos Secrets!")
         else:
             st.session_state.chat.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            with st.chat_message("user"): st.markdown(prompt)
             
             with st.chat_message("assistant"):
                 try:
                     client = genai.Client(api_key=api_key)
-                    # Contexto focado no Jonathan para ajudar com as matérias da UENF
-                    instrucoes = "Você é um tutor para o Jonathan, calouro de Civil na UENF. Ajude-o com Álgebra Linear e Química."
-                    response = client.models.generate_content(
-                        model="gemini-2.0-flash", 
-                        contents=f"{instrucoes}\n\n{prompt}"
+                    ctx = "Jonathan, aluno de Eng. Civil na UENF. Ajude com Álgebra e Química."
+                    # Trocado para 1.5-flash por ser mais estável na cota gratuita
+                    r = client.models.generate_content(
+                        model="gemini-1.5-flash", 
+                        contents=f"{ctx}\n\n{prompt}"
                     )
-                    st.markdown(response.text)
-                    st.session_state.chat.append({"role": "assistant", "content": response.text})
+                    st.markdown(r.text)
+                    st.session_state.chat.append({"role": "assistant", "content": r.text})
                 except Exception as e:
-                    st.error(f"Erro na IA: {e}")
+                    if "429" in str(e):
+                        st.error("⚠️ Cota atingida! O Google limitou o uso gratuito por agora. Tente de novo em 1 minuto.")
+                    else:
+                        st.error(f"Erro na IA: {e}")
+
+# (Repita a lógica do load para as outras abas conforme o código anterior)

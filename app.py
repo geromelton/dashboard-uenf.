@@ -4,21 +4,22 @@ from streamlit_gsheets import GSheetsConnection
 from google import genai
 import datetime
 
-# ─── CONFIGURAÇÃO MOBILE ──────────────────────────────────────
+# ─── CONFIGURAÇÃO MOBILE-FIRST ────────────────────────────────
 st.set_page_config(page_title="OPERAÇÃO RESGATE", layout="wide", initial_sidebar_state="collapsed")
 
-# ─── CSS PARA ELIMINAR BARRIGAS E ESPAÇOS ─────────────────────
+# ─── CSS PARA MATAR AS BARRIGAS E FIXAR O CHAT ────────────────
 st.markdown("""
 <style>
     .main { background-color: #0f1117; }
-    /* Estilo das Abas para Celular */
-    .stTabs [data-baseweb="tab-list"] { gap: 2px; }
+    /* Estilo das Abas */
+    .stTabs [data-baseweb="tab-list"] { gap: 4px; }
     .stTabs [data-baseweb="tab"] {
-        background: #1e2130; border-radius: 4px; padding: 4px 8px; color: #888; font-size: 11px;
+        background: #1e2130; border-radius: 5px; padding: 5px 10px; color: #888; font-size: 12px;
     }
     .stTabs [aria-selected="true"] { background: #1F3864 !important; color: white !important; }
-    /* Tira margens bobas que criam 'barrigas' */
-    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+    /* Forçar largura total para evitar barrigas */
+    [data-testid="stDataFrame"] { width: 100% !important; }
+    .block-container { padding-top: 1rem; padding-bottom: 10rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -32,78 +33,83 @@ st.subheader(f"⚡ Domingo, {hoje.strftime('%d/%m')}")
 # ─── ABAS ─────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Home", "📚 Estudo", "💪 Treino", "🎓 Notas", "🤖 IA"])
 
-# Função para ler a aba limpando o índice (evita o erro do seu log)
-def carregar_dados(nome):
+# Função segura para carregar as abas
+def load(sheet_name):
     try:
-        df = conn.read(worksheet=nome)
-        return df.reset_index(drop=True)
-    except:
+        # Resetamos o index para evitar o erro de 'hide_index' do seu log
+        return conn.read(worksheet=sheet_name).reset_index(drop=True)
+    except Exception as e:
+        st.warning(f"Aba '{sheet_name}' não carregou. Verifique o nome na planilha!")
         return None
 
 # --- ABA 1: HOME ---
 with tab1:
-    df_h = carregar_dados("📋 Visão Geral")
-    if df_h is not None:
-        st.dataframe(df_h, width=1000, hide_index=True)
+    df_home = load("📋 Visão Geral")
+    if df_home is not None:
+        st.dataframe(df_home, use_container_width=True, hide_index=True)
 
 # --- ABA 2: ESTUDOS ---
 with tab2:
-    st.write("📖 **Foco: Cálculo e Química**")
-    df_e = carregar_dados("📚 Registro de Estudos")
-    if df_e is not None:
-        df_edit_e = st.data_editor(df_e, num_rows="dynamic", width=1000)
+    st.write("📖 **Foco: Recuperar P1**")
+    df_est = load("📚 Registro de Estudos")
+    if df_est is not None:
+        df_ed = st.data_editor(df_est, num_rows="dynamic", use_container_width=True)
         if st.button("💾 Salvar Estudos", use_container_width=True):
-            conn.update(worksheet="📚 Registro de Estudos", data=df_edit_e)
+            conn.update(worksheet="📚 Registro de Estudos", data=df_ed)
             st.success("Sincronizado!")
 
 # --- ABA 3: TREINO ---
 with tab3:
-    st.write("💪 **Black House Gym**")
-    df_t = carregar_dados("💪 Treino")
-    if df_t is not None:
-        df_edit_t = st.data_editor(df_t, num_rows="dynamic", width=1000)
+    df_tr = load("💪 Treino")
+    if df_tr is not None:
+        df_ed_tr = st.data_editor(df_tr, num_rows="dynamic", use_container_width=True)
         if st.button("💾 Salvar Cargas", use_container_width=True):
-            conn.update(worksheet="💪 Treino", data=df_edit_t)
+            conn.update(worksheet="💪 Treino", data=df_ed_tr)
 
 # --- ABA 4: NOTAS ---
 with tab4:
-    st.write("🎓 **Recuperar P1!**")
-    df_n = carregar_dados("🎓 Notas Acadêmicas")
-    if df_n is not None:
-        df_edit_n = st.data_editor(df_n, num_rows="dynamic", width=1000)
+    df_nt = load("🎓 Notas Acadêmicas")
+    if df_nt is not None:
+        df_ed_nt = st.data_editor(df_nt, num_rows="dynamic", use_container_width=True)
         if st.button("💾 Salvar Notas", use_container_width=True):
-            conn.update(worksheet="🎓 Notas Acadêmicas", data=df_edit_n)
+            conn.update(worksheet="🎓 Notas Acadêmicas", data=df_ed_nt)
 
 # --- ABA 5: IA (GEMINI) ---
 with tab5:
-    st.write("🤖 **Tutor de Engenharia UENF**")
-    key = st.secrets.get("GEMINI_API_KEY")
+    st.write("🤖 **Tutor UENF — Jonathan Nunes**")
     
-    if key:
-        # Mostra um aviso se não houver conversa ainda, para não parecer vazio
-        if "chat" not in st.session_state:
-            st.session_state.chat = []
-            st.info("O Gemini está online. Digite sua dúvida no campo abaixo!")
+    # Pegamos a chave
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    
+    if "chat" not in st.session_state:
+        st.session_state.chat = []
 
-        # Área das mensagens
-        for m in st.session_state.chat:
-            with st.chat_message(m["role"]):
-                st.markdown(m["content"])
+    # Mostra as mensagens
+    for m in st.session_state.chat:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
 
-        # O CAMPO DE ESCREVER (Ele fica no rodapé do celular)
-        if prompt := st.chat_input("Dúvida de Álgebra ou Cálculo?"):
+    # O CAMPO DE ESCREVER (Sempre visível no rodapé agora!)
+    prompt = st.chat_input("Pergunte sobre Escalonamento ou Química...")
+    
+    if prompt:
+        if not api_key:
+            st.error("Erro: A chave API ainda não foi configurada nos Secrets do Streamlit!")
+        else:
             st.session_state.chat.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
             
             with st.chat_message("assistant"):
                 try:
-                    client = genai.Client(api_key=key)
-                    ctx = "Jonathan, calouro de Civil na UENF. Ajude-o a estudar para as P2."
-                    r = client.models.generate_content(model="gemini-2.0-flash", contents=f"{ctx}\n\n{prompt}")
-                    st.markdown(r.text)
-                    st.session_state.chat.append({"role": "assistant", "content": r.text})
+                    client = genai.Client(api_key=api_key)
+                    # Contexto focado no Jonathan para ajudar com as matérias da UENF
+                    instrucoes = "Você é um tutor para o Jonathan, calouro de Civil na UENF. Ajude-o com Álgebra Linear e Química."
+                    response = client.models.generate_content(
+                        model="gemini-2.0-flash", 
+                        contents=f"{instrucoes}\n\n{prompt}"
+                    )
+                    st.markdown(response.text)
+                    st.session_state.chat.append({"role": "assistant", "content": response.text})
                 except Exception as e:
-                    st.error(f"Erro: {e}")
-    else:
-        st.error("Chave API não configurada nos Secrets.")
+                    st.error(f"Erro na IA: {e}")
